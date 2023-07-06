@@ -1,10 +1,8 @@
-extern crate core;
-
 use core::fmt;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use serde::de::{DeserializeSeed, MapAccess, SeqAccess, Visitor};
-use serde::{de, Deserialize};
+use serde::{de, Deserialize, Serialize};
 use serde_json::Number;
 
 macro_rules! tri {
@@ -50,24 +48,8 @@ impl<'de> Visitor<'de> for KeyClassifier {
     }
 }
 
-
-// /// Represents a JSON number, whether integer or floating point.
-// #[derive(Clone, PartialEq, Eq, Hash)]
-// pub struct Number {
-//     n: N,
-// }
-//
-// #[cfg(not(feature = "arbitrary_precision"))]
-// #[derive(Copy, Clone)]
-// enum N {
-//     PosInt(u64),
-//     /// Always less than zero.
-//     NegInt(i64),
-//     /// Always finite.
-//     Float(f64),
-// }
-
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Serialize)]
+#[serde(untagged)]
 pub enum Value<'a> {
     Null,
     Bool(bool),
@@ -135,14 +117,6 @@ impl<'de> Deserialize<'de> for Value<'de> {
                 Ok(Value::Bytes(v))
             }
 
-
-            // #[cfg(any(feature = "std", feature = "alloc"))]
-            // #[inline]
-            // fn visit_string<E>(self, value: String) -> Result<Value<'de>, E> {
-            //     println!("Visiting string???");
-            //     Ok(Value::String(value.as_str()))
-            // }
-
             #[inline]
             fn visit_none<E>(self) -> Result<Value<'de>, E> {
                 Ok(Value::Null)
@@ -200,135 +174,13 @@ impl<'de> Deserialize<'de> for Value<'de> {
     }
 }
 
-//
-// impl<'de   : 'a, 'a> Deserialize<'de> for Value<'a> {
-//     #[inline]
-//     fn deserialize<D>(deserializer: D) -> Result<Value<'a>, D::Error>
-//         where
-//             D: serde::Deserializer<'de>,
-//     {
-//         struct ValueVisitor<'de   : 'a, 'a> {
-//             marker: PhantomData<Value<'a>>,
-//             lifetime: PhantomData<&'de ()>,
-//         }
-//
-//         impl<'de   : 'a, 'a> Visitor<'de> for ValueVisitor<'de, 'a> {
-//             type Value = Value<'de>;
-//
-//             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-//                 formatter.write_str("any valid JSON value")
-//             }
-//
-//             #[inline]
-//             fn visit_bool<E>(self, value: bool) -> Result<Value<'de>, E> {
-//                 Ok(Value::Bool(value))
-//             }
-//
-//             #[inline]
-//             fn visit_i64<E>(self, value: i64) -> Result<Value<'de>, E> {
-//                 Ok(Value::Number(value.into()))
-//             }
-//
-//             #[inline]
-//             fn visit_u64<E>(self, value: u64) -> Result<Value<'de>, E> {
-//                 Ok(Value::Number(value as i64))
-//             }
-//
-//             #[inline]
-//             fn visit_f64<E>(self, value: f64) -> Result<Value<'de>, E> {
-//                 Ok(Value::Number(value as i64))
-//             }
-//
-//             // #[cfg(any(feature = "std", feature = "alloc"))]
-//             #[inline]
-//             fn visit_str<E>(self, value: &'a str) -> Result<Value, E>
-//                 where
-//                     E: serde::de::Error,
-//             {
-//                 println!("Visiting str -> ->");
-//                 Ok(Value::String(value))
-//             }
-//
-//             // #[cfg(any(feature = "std", feature = "alloc"))]
-//             #[inline]
-//             fn visit_string<E>(self, value: String) -> Result<Value<'de>, E> {
-//                 println!("Visiting string???");
-//                 Ok(Value::String(value.as_str()))
-//             }
-//
-//             #[inline]
-//             fn visit_none<E>(self) -> Result<Value<'de>, E> {
-//                 Ok(Value::Null)
-//             }
-//
-//             #[inline]
-//             fn visit_some<D>(self, deserializer: D) -> Result<Value<'de>, D::Error>
-//                 where
-//                     D: serde::Deserializer<'de>,
-//             {
-//                 Deserialize::deserialize(deserializer)
-//             }
-//
-//             #[inline]
-//             fn visit_unit<E>(self) -> Result<Value<'de>, E> {
-//                 Ok(Value::Null)
-//             }
-//
-//             #[inline]
-//             fn visit_seq<V>(self, mut visitor: V) -> Result<Value<'de>, V::Error>
-//                 where
-//                     V: SeqAccess<'de>,
-//             {
-//                 let mut vec = Vec::new();
-//
-//                 while let Some(elem) = tri!(visitor.next_element()) {
-//                     vec.push(elem);
-//                 }
-//
-//                 Ok(Value::Array(vec))
-//             }
-//
-//             // #[cfg(any(feature = "std", feature = "alloc"))]
-//             fn visit_map<V>(self, mut visitor: V) -> Result<Value<'de>, V::Error>
-//                 where
-//                     V: MapAccess<'de>,
-//             {
-//                 match visitor.next_key_seed(KeyClassifier)? {
-//                     #[cfg(feature = "arbitrary_precision")]
-//                     Some(KeyClass::Number) => {
-//                         let number: NumberFromString = visitor.next_value()?;
-//                         Ok(Value::Number(number.value))
-//                     }
-//                     #[cfg(feature = "raw_value")]
-//                     Some(KeyClass::RawValue) => {
-//                         let value = visitor.next_value_seed(crate::raw::BoxedFromString)?;
-//                         crate::from_str(value.get()).map_err(de::Error::custom)
-//                     }
-//                     Some(KeyClass::Map(first_key)) => {
-//                         let mut values = HashMap::new();
-//
-//                         values.insert(first_key, tri!(visitor.next_value()));
-//                         while let Some((key, value)) = tri!(visitor.next_entry()) {
-//                             values.insert(key, value);
-//                         }
-//
-//                         Ok(Value::Object(values))
-//                     }
-//                     None => Ok(Value::Object(HashMap::new())),
-//                 }
-//             }
-//         }
-//
-//         deserializer.deserialize_any(ValueVisitor{ marker: PhantomData::<Value<'a>>, lifetime: PhantomData })
-//     }
-// }
-
 #[cfg(test)]
 mod tests {
     use serde::Deserialize;
     use serde_json::Value;
-    use serde_json::value::RawValue;
 
+
+    #[allow(dead_code)]
     #[test]
     fn serde_zero_copy_struct() {
         #[derive(Deserialize, Debug)]
@@ -393,6 +245,40 @@ mod tests {
             }
             _ => {}
         }
+        dbg!(serde_json::to_string(&result).unwrap());
+        assert_json_diff::assert_json_eq!(serde_json::from_str::<serde_json::Value>(&serde_json::to_string(&result).unwrap()).unwrap(),
+            serde_json::from_str::<serde_json::Value>(json_str).unwrap());
         let _ = dbg!(result);
+    }
+
+    #[test]
+    fn serde_zero_copy_value_nested() {
+        let json_str = r#"{"id":123,"name":"John Doe","screen_name":"Unidentified","location":"Fringe","nested":{"id":123,"name":"John Doe","screen_name":"Unidentified","location":"Fringe"}}"#;
+        let i = json_str.find("name").unwrap();
+        let original_key_ptr = json_str.get(i..i + 4).unwrap().as_ptr();
+        let i = json_str.find("John").unwrap();
+        let original_val_ptr = json_str.get(i..i + 8).unwrap().as_ptr();
+        println!("original ptr: {:?}", original_val_ptr);
+        let result: super::Value = serde_json::from_slice(json_str.as_bytes()).unwrap();
+        match &result {
+            crate::Value::Object(obj) => {
+                let (k, v) = obj.get_key_value("name").unwrap();
+                assert_eq!(k.as_ptr(), original_key_ptr);
+                match v {
+                    crate::Value::String(s) => {
+                        println!("{:?}", s);
+                        assert_eq!(s.as_ptr(), original_val_ptr);
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+        // dbg!(serde_json::to_string(&result).unwrap());
+        // dbg!(&result.serialize())
+        // serde_json::from_str::<serde_json::Value>(&serde_json::to_string(&result).unwrap()).unwrap();
+        assert_json_diff::assert_json_eq!(serde_json::from_str::<serde_json::Value>(&serde_json::to_string(&result).unwrap()).unwrap(),
+            serde_json::from_str::<serde_json::Value>(json_str).unwrap());
+        // let _ = dbg!(result);
     }
 }
