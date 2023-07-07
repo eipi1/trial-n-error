@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 rust-version = "1.36"
-name = "serde_json"
+name = "serde_json_nostr"
 version = "1.0.100"
 authors = [
     "Erick Tryzelaar <erick.tryzelaar@gmail.com>",

@@ -1339,9 +1339,9 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
             b'"' => {
                 self.eat_char();
                 self.scratch.clear();
-                match tri!(self.read.parse_str(&mut self.scratch)) {
-                    Reference::Borrowed(s) => visitor.visit_borrowed_str(s),
-                    Reference::Copied(s) => visitor.visit_str(s),
+                match tri!(self.read.parse_str_raw(&mut self.scratch)) {
+                    Reference::Borrowed(s) => visitor.visit_borrowed_bytes(s),
+                    Reference::Copied(s) => visitor.visit_bytes(s),
                 }
             }
             b'[' => {

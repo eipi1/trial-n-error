@@ -2,7 +2,8 @@ use core::fmt;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use serde::de::{DeserializeSeed, MapAccess, SeqAccess, Visitor};
-use serde::{de, Deserialize, Serialize};
+use serde::{de, Deserialize, Serialize, Serializer};
+use serde::ser::Error;
 use serde_json::Number;
 
 macro_rules! tri {
@@ -42,14 +43,11 @@ impl<'de> Visitor<'de> for KeyClassifier {
         where
             E: de::Error,
     {
-        match s {
-            _ => Ok(KeyClass::Map(s)),
-        }
+        Ok(KeyClass::Map(s))
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Debug, Serialize)]
-#[serde(untagged)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum Value<'a> {
     Null,
     Bool(bool),
@@ -60,6 +58,27 @@ pub enum Value<'a> {
     Object(HashMap<&'a str, Value<'a>>),
 }
 
+impl<'a> Serialize for Value<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        match self {
+            Value::Null => serializer.serialize_unit(),
+            Value::Bool(b) => serializer.serialize_bool(*b),
+            Value::Number(n) => n.serialize(serializer),
+            Value::Bytes(b) => serializer.serialize_str(std::str::from_utf8(b)
+                .map_err(|_| Error::custom("Non-UTF encoding"))?),
+            Value::String(s) => s.serialize(serializer),
+            Value::Array(v) => v.serialize(serializer),
+            Value::Object(m) => {
+                use serde::ser::SerializeMap;
+                let mut map = tri!(serializer.serialize_map(Some(m.len())));
+                for (k, v) in m {
+                    tri!(map.serialize_entry(k, v));
+                }
+                map.end()
+            }
+        }
+    }
+}
 
 impl<'de> Deserialize<'de> for Value<'de> {
     #[inline]
@@ -217,7 +236,7 @@ mod tests {
         let i = json_str.find("John").unwrap();
         let original_ptr = json_str.get(i..i + 8).unwrap().as_ptr();
         println!("original ptr: {:?}", original_ptr);
-        let result: Value = serde_json::from_str(json_str).unwrap();
+        let result: Value = serde_json::from_slice(json_str.as_bytes()).unwrap();
         println!("{:?}", result.get("name").unwrap().as_str().unwrap().as_ptr());
         let _ = dbg!(result);
     }
@@ -259,7 +278,7 @@ mod tests {
         let i = json_str.find("John").unwrap();
         let original_val_ptr = json_str.get(i..i + 8).unwrap().as_ptr();
         println!("original ptr: {:?}", original_val_ptr);
-        let result: super::Value = serde_json::from_slice(json_str.as_bytes()).unwrap();
+        let result: super::Value = serde_json_nostr::from_str(json_str).unwrap();
         match &result {
             crate::Value::Object(obj) => {
                 let (k, v) = obj.get_key_value("name").unwrap();
@@ -274,11 +293,34 @@ mod tests {
             }
             _ => {}
         }
-        // dbg!(serde_json::to_string(&result).unwrap());
-        // dbg!(&result.serialize())
-        // serde_json::from_str::<serde_json::Value>(&serde_json::to_string(&result).unwrap()).unwrap();
         assert_json_diff::assert_json_eq!(serde_json::from_str::<serde_json::Value>(&serde_json::to_string(&result).unwrap()).unwrap(),
             serde_json::from_str::<serde_json::Value>(json_str).unwrap());
-        // let _ = dbg!(result);
+    }
+
+    #[test]
+    fn serde_zero_copy_value_with_bytes() {
+        let json_str = r#"{"id":123,"name":"John Doe","screen_name":"Unidentified","location":"Fringe","nested":{"id":123,"name":"John Doe","screen_name":"Unidentified","location":"Fringe"}}"#;
+        let i = json_str.find("name").unwrap();
+        let original_key_ptr = json_str.get(i..i + 4).unwrap().as_ptr();
+        let i = json_str.find("John").unwrap();
+        let original_val_ptr = json_str.get(i..i + 8).unwrap().as_ptr();
+        println!("original ptr: {:?}", original_val_ptr);
+        let result: super::Value = serde_json_nostr::from_str(json_str).unwrap();
+        match &result {
+            crate::Value::Object(obj) => {
+                let (k, v) = obj.get_key_value("name").unwrap();
+                assert_eq!(k.as_ptr(), original_key_ptr);
+                match v {
+                    crate::Value::String(s) => {
+                        println!("{:?}", s);
+                        assert_eq!(s.as_ptr(), original_val_ptr);
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+        assert_json_diff::assert_json_eq!(serde_json::from_str::<serde_json::Value>(&serde_json::to_string(&result).unwrap()).unwrap(),
+            serde_json::from_str::<serde_json::Value>(json_str).unwrap());
     }
 }
