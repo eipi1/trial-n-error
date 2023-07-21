@@ -1,0 +1,56 @@
+[package]
+name = "hyper-zero-copy"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "main"
+
+
+
+[dependencies.hyper]
+version = "0.14"
+features = ["full"]
+
+[dependencies.tokio]
+version = "1.28"
+features = ["full"]
+
+[dev-dependencies.tokio-test]
+version = "0.4"
+
+
+[dependencies.serde]
+version = "1.0"
+features = ["derive"]
+
+
+[dependencies.serde_json]
+version = "1.0"
+
+[dependencies.serde_json_nostr]
+path = "../serde_json-1.0.100"
+
+[dependencies.serde-zero-copy]
+path = "../serde-zero-copy"
+
+[dependencies.yoke]
+version = "0.7"
+
+[dependencies.axum]
+version = "0.6"
+features = ["json"]
+
+[dependencies.axum-macros]
+version = "0.3"
+
+[dependencies.mime]
+version = "0.3"
+
+[dependencies.bytes]
+version = "1.4"
+
+[profile.release]
+debug = true

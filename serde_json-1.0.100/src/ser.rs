@@ -189,12 +189,13 @@ where
 
     #[inline]
     fn serialize_bytes(self, value: &[u8]) -> Result<()> {
-        use serde::ser::SerializeSeq;
-        let mut seq = tri!(self.serialize_seq(Some(value.len())));
-        for byte in value {
-            tri!(seq.serialize_element(byte));
-        }
-        seq.end()
+        // use serde::ser::SerializeSeq;
+        // let mut seq = tri!(self.serialize_seq(Some(value.len())));
+        // for byte in value {
+        //     tri!(seq.serialize_element(byte));
+        // }
+        // seq.end()
+        write_raw_str_bytes(&mut self.writer, &mut self.formatter, value).map_err(Error::io)
     }
 
     #[inline]
@@ -1982,6 +1983,16 @@ impl<'a> Formatter for PrettyFormatter<'a> {
         self.has_value = true;
         Ok(())
     }
+}
+
+fn write_raw_str_bytes<W, F>(writer: &mut W, formatter: &mut F, value: &[u8]) -> io::Result<()>
+    where
+        W: ?Sized + io::Write,
+        F: ?Sized + Formatter,
+{
+    tri!(formatter.begin_string(writer));
+    tri!(writer.write_all(value));
+    formatter.end_string(writer)
 }
 
 fn format_escaped_str<W, F>(writer: &mut W, formatter: &mut F, value: &str) -> io::Result<()>
