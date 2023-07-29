@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::env;
+use std::ops::Deref;
 use std::str::FromStr;
 use axum::{
     Json,
@@ -13,10 +14,12 @@ use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use hyper::{Client, Uri};
+use hyper::body::HttpBody;
 use hyper::client::HttpConnector;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{json, Value};
 use yoke::Yoke;
+use serde_json_nostr::error::Category::Data;
 
 struct AppState {
     // ...
@@ -43,6 +46,11 @@ async fn main() {
         .route(
             "/serde",
             get(serde_val),
+        )
+        .with_state((shared_state.clone(), uri.clone()))
+        .route(
+            "/simd",
+            get(serde_simd),
         )
         .with_state((shared_state.clone(), uri.clone()))
         ;
@@ -117,7 +125,74 @@ async fn serde_val(State((client, uri)): State<(Arc<Client<HttpConnector>>, Uri)
     Json(val)
 }
 
+pub struct SimdValue(Value);
 
+
+impl IntoResponse for SimdValue {
+    fn into_response(self) -> Response {
+
+        // Use a small initial capacity of 128 bytes like serde_json::to_vec
+        // https://docs.rs/serde_json/1.0.82/src/serde_json/ser.rs.html#2189
+        let mut buf = BytesMut::with_capacity(128).writer();
+        match simd_json::serde::to_writer(&mut buf, &self.0) {
+            Ok(()) => (
+                [(
+                    header::CONTENT_TYPE,
+                    HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()),
+                )],
+                buf.into_inner().freeze(),
+            )
+                .into_response(),
+            Err(err) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [(
+                    header::CONTENT_TYPE,
+                    HeaderValue::from_static(mime::TEXT_PLAIN_UTF_8.as_ref()),
+                )],
+                err.to_string(),
+            )
+                .into_response(),
+        }
+    }
+}
+
+use yoke_derive::Yokeable;
+#[derive(Yokeable)]
+struct WrappedValue<'a> {
+    data: Vec<u8>,
+    value: Option<serde_zero_copy::Value<'a>>,
+}
+
+impl<'a> WrappedValue<'a> {
+    fn parse_to_json(&'a mut self) {
+        let val: serde_zero_copy::Value = simd_json::serde::from_slice(&mut self.data).unwrap();
+        self.value = Some(val);
+    }
+}
+
+impl <'a> Deref for WrappedValue<'a> {
+    type Target = Option<serde_zero_copy::Value<'a>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
+}
+
+async fn serde_simd(State((client, uri)): State<(Arc<Client<HttpConnector>>, Uri)>) -> Json<Value> {
+    let mut res = client.get(uri).await.unwrap();
+    let mut buf = hyper::body::to_bytes(res).await.unwrap();
+    let mut buf = buf.to_vec();
+    let val: Value = simd_json::serde::from_slice(&mut buf).unwrap();
+    // let mut value = WrappedValue {
+    //     data: buf,
+    //     value: None,
+    // };
+    // value.parse_to_json();
+    // let yoked = yoke::Yoke::<(), WrappedValue<'static>>::attach_to_cart( value, |b| {
+    //     b
+    // });
+    Json(val)
+}
 
 async fn get_user(state: Arc<Client<HttpConnector>>) {
     // ...

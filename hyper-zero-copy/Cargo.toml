@@ -52,5 +52,11 @@ version = "0.3"
 [dependencies.bytes]
 version = "1.4"
 
+[dependencies.simd-json]
+version = "0.10.3"
+
+[dependencies.yoke-derive]
+version = "0.7"
+
 [profile.release]
 debug = true

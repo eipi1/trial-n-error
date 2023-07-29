@@ -28,5 +28,8 @@ version = "0.11"
 [dependencies.assert-json-diff]
 version = "2.0"
 
+[dependencies.simd-json]
+version = "0.10.3"
+
 [dev-dependencies.async-fs]
 version = "1.6"

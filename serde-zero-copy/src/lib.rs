@@ -54,8 +54,8 @@ pub enum Value<'a> {
     Bool(bool),
     Number(Number),
     Bytes(&'a [u8]),
-    String(&'a str),
-    OwnedString(String),
+    Str(&'a str),
+    String(String),
     Array(Vec<Value<'a>>),
     // Object(HashMap<&'a str, Value<'a>>),
     Object(BTreeMap<&'a str, Value<'a>>),
@@ -68,7 +68,7 @@ impl<'a> Serialize for Value<'a> {
             Value::Bool(b) => serializer.serialize_bool(*b),
             Value::Number(n) => n.serialize(serializer),
             Value::Bytes(b) => serializer.serialize_bytes(b),
-            Value::String(s) => s.serialize(serializer),
+            Value::Str(s) => s.serialize(serializer),
             Value::Array(v) => v.serialize(serializer),
             Value::Object(m) => {
                 use serde::ser::SerializeMap;
@@ -78,7 +78,7 @@ impl<'a> Serialize for Value<'a> {
                 }
                 map.end()
             }
-            Value::OwnedString(s) => s.serialize(serializer),
+            Value::String(s) => s.serialize(serializer),
         }
     }
 }
@@ -128,7 +128,8 @@ impl<'de> Deserialize<'de> for Value<'de> {
                 where
                     E: serde::de::Error,
             {
-                Ok(Value::String(value))
+                println!("using visit_borrowed_str");
+                Ok(Value::Str(value))
             }
 
             #[inline]
@@ -142,7 +143,8 @@ impl<'de> Deserialize<'de> for Value<'de> {
             fn visit_bytes<E>(self, v: &[u8]) -> Result<Value<'de>, E> where
                 E: serde::de::Error,
             {
-                Ok(Value::OwnedString(String::from_utf8_lossy(v).into_owned()))
+                println!("using visit_bytes");
+                Ok(Value::String(String::from_utf8_lossy(v).into_owned()))
             }
 
             #[inline]
@@ -207,7 +209,7 @@ impl<'de> Deserialize<'de> for Value<'de> {
 // #[derive(Debug)]
 struct User<'a> {
     id: u32,
-    #[serde(with="serde_bytes")]
+    #[serde(with = "serde_bytes")]
     name: &'a [u8],
     screen_name: &'a str,
     location: &'a str,
@@ -777,6 +779,38 @@ mod tests {
         println!("{}", &value_str);
         assert_json_diff::assert_json_eq!(serde_json::from_str::<serde_json::Value>(&value_str).unwrap(),
             serde_json::from_str::<serde_json::Value>(json_str).unwrap());
+    }
+
+
+    #[test]
+    fn serde_zero_copy_large_value_simd_json() {
+        let mut file = std::fs::File::open("src/sample.json").unwrap();
+        let mut contents = Vec::new();
+        use std::io::Read;
+        file.read_to_end(&mut contents).unwrap();
+        let string = String::from_utf8(contents).unwrap();
+        let mut string_ = string.clone();
+        let mut json_str = string_.as_mut_str();
+        let result: super::Value = unsafe { simd_json::serde::from_str(&mut json_str).unwrap() };
+        dbg!(&result);
+        match &result {
+            crate::Value::Object(obj) => {
+                let (k, v) = obj.get_key_value("product").unwrap();
+                match v {
+                    crate::Value::Object(obj) => {
+                        let (k, v) = obj.get_key_value("allergens").unwrap();
+                    }
+                    _ => {
+                        panic!()
+                    }
+                }
+            }
+            _ => {}
+        }
+        let value_str = serde_json_nostr::to_string(&result).unwrap();
+        println!("{}", &value_str);
+        assert_json_diff::assert_json_eq!(serde_json::from_str::<serde_json::Value>(&value_str).unwrap(),
+            serde_json::from_str::<serde_json::Value>(string.as_str()).unwrap());
     }
 
     #[test]
